@@ -3,13 +3,13 @@ import torch
 from tensorboardX import SummaryWriter
 from torch import nn
 
-from config import device, print_freq
+from config import device, print_freq, print_freq_test
 from data_gen import VoxCeleb1Dataset, pad_collate
 from models.arc_margin import ArcMarginModel
 from models.embedder import GST
 from test import test, visualize
 from utils import parse_args, save_checkpoint, AverageMeter, get_logger, accuracy, theta_dist
-
+import tqdm,os
 
 def train_net(args):
     torch.manual_seed(7)
@@ -51,6 +51,7 @@ def train_net(args):
         model = checkpoint['model']
         metric_fc = checkpoint['metric_fc']
         optimizer = checkpoint['optimizer']
+        print ('restored checkpoint continute epoch num {}'.format(start_epoch))
 
     logger = get_logger()
 
@@ -62,12 +63,16 @@ def train_net(args):
     criterion = nn.CrossEntropyLoss().to(device)
 
     # Custom dataloaders
-    train_dataset = VoxCeleb1Dataset(args, 'train')
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=pad_collate,
-                                               pin_memory=False, shuffle=True, num_workers=args.num_workers)
+#     train_dataset = VoxCeleb1Dataset(args, 'train')
+#     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=pad_collate,
+#                                                pin_memory=False, shuffle=True, num_workers=args.num_workers)
 
     # Epochs
     for epoch in range(start_epoch, args.epochs):
+        train_dataset = VoxCeleb1Dataset(args, 'train')
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=pad_collate,
+                                                   pin_memory=False, shuffle=True,drop_last=True)
+
         # One epoch's training
         train_loss, train_acc = train(train_loader=train_loader,
                                       model=model,
@@ -118,7 +123,7 @@ def train(train_loader, model, metric_fc, criterion, optimizer, epoch, logger):
     accs = AverageMeter()
 
     # Batches
-    for i, (data) in enumerate(train_loader):
+    for i, (data) in tqdm.tqdm(enumerate(train_loader),total=int(len(train_loader.dataset) / train_loader.batch_size)):
         # Move to GPU, if available
         padded_input, input_lengths, label = data
         padded_input = padded_input.to(device)
@@ -153,7 +158,11 @@ def train(train_loader, model, metric_fc, criterion, optimizer, epoch, logger):
                         'Loss {loss.val:.5f} ({loss.avg:.5f})\t'
                         'Accuracy {accs.val:.3f} ({accs.avg:.3f})'.format(epoch, i, len(train_loader), loss=losses,
                                                                           accs=accs))
-
+            
+        if i % print_freq_test == 0:
+            test_acc, threshold = test(model)
+            print('Test accuracy: ' + str(test_acc))
+            model.train()
     return losses.avg, accs.avg
 
 

@@ -5,7 +5,7 @@ import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # sets device for model and PyTorch tensors
 
 # Model parameters
-n_mels = 80  # dimension of feature
+n_mels = 48  # dimension of feature
 window_size = 25  # window size for FFT (ms)
 stride = 10  # window stride for FFT (ms)
 hidden_size = 512
@@ -26,6 +26,7 @@ num_heads = 8
 # Training parameters
 grad_clip = 5.  # clip gradients at an absolute value of
 print_freq = 50  # print training/validation stats  every __ batches
+print_freq_test = 200
 checkpoint = None  # path to checkpoint, None if none
 sample_rate = 16000  # vox1
 

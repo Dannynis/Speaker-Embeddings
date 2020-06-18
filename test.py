@@ -62,7 +62,7 @@ def evaluate(model):
 
     with open(test_file, 'r') as file:
         lines = file.readlines()
-
+#     lines = lines[:30]
     angles = []
 
     start = time.time()
@@ -70,18 +70,18 @@ def evaluate(model):
         for line in tqdm(lines):
             tokens = line.split()
             file0 = tokens[0]
-            mel0 = extract_feature(input_file=file0, feature='fbank', dim=hp.n_mels, cmvn=True)
+            mel0 = extract_feature(input_file=file0, feature='pre_world', dim=hp.n_mels, cmvn=False)
             mel0 = build_LFR_features(mel0, m=hp.LFR_m, n=hp.LFR_n)
-            mel0 = torch.unsqueeze(torch.from_numpy(mel0), dim=0)
+            mel0 = torch.unsqueeze(mel0, dim=0)
             mel0 = mel0.to(hp.device)
             with torch.no_grad():
                 output = model(mel0)[0]
             feature0 = output.cpu().numpy()
 
             file1 = tokens[1]
-            mel1 = extract_feature(input_file=file1, feature='fbank', dim=hp.n_mels, cmvn=True)
+            mel1 = extract_feature(input_file=file1, feature='pre_world', dim=hp.n_mels, cmvn=False)
             mel1 = build_LFR_features(mel1, m=hp.LFR_m, n=hp.LFR_n)
-            mel1 = torch.unsqueeze(torch.from_numpy(mel1), dim=0)
+            mel1 = torch.unsqueeze(mel1, dim=0)
             with torch.no_grad():
                 mel1 = mel1.to(hp.device)
             output = model(mel1)[0]
@@ -90,10 +90,15 @@ def evaluate(model):
             x0 = feature0 / np.linalg.norm(feature0)
             x1 = feature1 / np.linalg.norm(feature1)
             cosine = np.dot(x0, x1)
-            theta = math.acos(cosine)
-            theta = theta * 180 / math.pi
-            is_same = tokens[2]
-            angles.append('{} {}\n'.format(theta, is_same))
+            try:
+                theta = math.acos(cosine)
+                theta = theta * 180 / math.pi
+                is_same = tokens[2]
+                angles.append('{} {}\n'.format(theta, is_same))
+            except:
+                import traceback
+                print (traceback.format_exc())
+                print (cosine)
 
     elapsed_time = time.time() - start
     print('elapsed time(sec) per audio: {}'.format(elapsed_time / (6000 * 2)))

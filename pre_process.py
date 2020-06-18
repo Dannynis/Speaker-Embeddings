@@ -53,6 +53,7 @@ if __name__ == "__main__":
 
     with open(data_file, 'wb') as file:
         pickle.dump(data, file)
+    print ('pickled to {}'.format(data_file))
 
     print('num_train: ' + str(len(data['train'])))
     # print('num_valid: ' + str(len(data['valid'])))
