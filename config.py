@@ -25,10 +25,10 @@ num_heads = 8
 
 # Training parameters
 grad_clip = 5.  # clip gradients at an absolute value of
-print_freq = 50  # print training/validation stats  every __ batches
-print_freq_test = 200
+print_freq = 500  # print training/validation stats  every __ batches
+print_freq_test = 20000
 checkpoint = None  # path to checkpoint, None if none
-sample_rate = 16000  # vox1
+sample_rate = 22050  # vox1
 
 # Data parameters
 num_train = 147642
@@ -36,8 +36,10 @@ num_valid = 1000
 
 num_classes = 1211
 
-DATA_DIR = 'data'
-vox1_folder = 'data/vox1'
+DATA_DIR = '/resources/wavs/Speaker-Embeddings/'
+vox1_folder = '/resources/wavs/Speaker-Embeddings/data/vox1'
 dev_wav_folder = os.path.join(vox1_folder, 'dev/wav')
 test_wav_folder = os.path.join(vox1_folder, 'test/wav')
-data_file = 'data/vox1.pickle'
+data_file = '/resources/wavs/Speaker-Embeddings/data/vox1.pickle'
+
+##Im the king

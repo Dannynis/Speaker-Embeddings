@@ -8,6 +8,7 @@ import scipy.stats
 import torch
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+import pickle
 
 import config as hp
 from models.embedder import GST
@@ -57,35 +58,51 @@ def gen_test_pairs():
         file.writelines(out_lines)
 
 
-def evaluate(model):
+def evaluate(model,metric_fc):
     model.eval()
-
+    criterion = torch.nn.CrossEntropyLoss()
     with open(test_file, 'r') as file:
         lines = file.readlines()
 #     lines = lines[:30]
     angles = []
+    with open(hp.data_file, 'rb') as file:
+        data = pickle.load(file)
+    id_to_label = data['id_to_label']
+    softmax_losses = []
 
     start = time.time()
     with torch.no_grad():
         for line in tqdm(lines):
             tokens = line.split()
-            file0 = tokens[0]
-            mel0 = extract_feature(input_file=file0, feature='pre_world', dim=hp.n_mels, cmvn=False)
+            file0 = hp.DATA_DIR+tokens[0]
+            mel0 = extract_feature(input_file=file0, feature='pre_glow', dim=hp.n_mels, cmvn=False)
             mel0 = build_LFR_features(mel0, m=hp.LFR_m, n=hp.LFR_n)
             mel0 = torch.unsqueeze(mel0, dim=0)
             mel0 = mel0.to(hp.device)
             with torch.no_grad():
-                output = model(mel0)[0]
-            feature0 = output.cpu().numpy()
+                output0 = model(mel0)[0]
+            feature0 = output0.cpu().numpy()
 
-            file1 = tokens[1]
-            mel1 = extract_feature(input_file=file1, feature='pre_world', dim=hp.n_mels, cmvn=False)
+            file1 = hp.DATA_DIR+tokens[1]
+            mel1 = extract_feature(input_file=file1, feature='pre_glow', dim=hp.n_mels, cmvn=False)
             mel1 = build_LFR_features(mel1, m=hp.LFR_m, n=hp.LFR_n)
             mel1 = torch.unsqueeze(mel1, dim=0)
             with torch.no_grad():
                 mel1 = mel1.to(hp.device)
-            output = model(mel1)[0]
-            feature1 = output.cpu().numpy()
+            output1 = model(mel1)[0]
+            feature1 = output1.cpu().numpy()
+
+            if metric_fc is not None:
+                id0 = id_to_label[file0.split('/')[-3]]
+                id1 = id_to_label[file1.split('/')[-3]]
+                pred0 = metric_fc(output0, id0)  # class_id_out => [N, 1251]
+                pred1 = metric_fc(output1, id1)  # class_id_out => [N, 1251]
+                loss1 = criterion(pred0, id0)
+                loss0 = criterion(pred1, id1)
+                print (pred0)
+                print (id0)
+                softmax_losses.append((loss0+loss1)/2)
+                print ((loss0+loss1)/2)
 
             x0 = feature0 / np.linalg.norm(feature0)
             x1 = feature1 / np.linalg.norm(feature1)
@@ -100,6 +117,7 @@ def evaluate(model):
                 print (traceback.format_exc())
                 print (cosine)
 
+    print ('test softmax loss {}'.format(torch.mean(torch.Tensor(softmax_losses))))
     elapsed_time = time.time() - start
     print('elapsed time(sec) per audio: {}'.format(elapsed_time / (6000 * 2)))
 
@@ -223,9 +241,9 @@ def error_analysis(threshold):
     print('len(fn): ' + str(len(fn)))
 
 
-def test(model):
+def test(model,metric_fc=None):
     print('Evaluating {}...'.format(angles_file))
-    evaluate(model)
+    evaluate(model,metric_fc)
 
     print('Calculating threshold...')
     thres = get_threshold()

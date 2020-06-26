@@ -8,8 +8,9 @@ import torch,os
 import tqdm
 from config import sample_rate
 from world_utils import *
-import multiprocessing
+import multiprocessing.dummy
 from waveglow_vocoder import WaveGlowVocoder
+from torchaudio import functional as F
 
 WV = WaveGlowVocoder()
 
@@ -90,7 +91,7 @@ def parse_args():
     parser.add_argument('--epochs', default=1000, type=int, help='Number of maximum epochs')
     parser.add_argument('--lr', default=1e-3, type=float, help='Init learning rate')
     parser.add_argument('--l2', default=1e-6, type=float, help='weight decay (L2)')
-    parser.add_argument('--batch-size', default=16, type=int, help='Batch size')
+    parser.add_argument('--batch-size', default=20, type=int, help='Batch size')
     parser.add_argument('--num-workers', default=10, type=int, help='Number of workers to generate minibatch')
     # optimizer
     parser.add_argument('--margin-m', type=float, default=0.2, help='angular margin m')
@@ -100,7 +101,7 @@ def parse_args():
     parser.add_argument('--weight-decay', type=float, default=0.0, help='weight decay')
     parser.add_argument('--mom', type=float, default=0.9, help='momentum')
 
-    parser.add_argument('--checkpoint', type=str, default=None, help='checkpoint')
+    parser.add_argument('--checkpoint', type=str,default='checkpoint.tar', help='checkpoint')
     args = parser.parse_args()
     return args
 
@@ -156,7 +157,7 @@ def normalize(yt):
 from pathlib import Path
 import json
     
-save_folder = './extracted_features'
+save_folder = '/resources/wavs/Speaker-Embeddings/extracted_features_glow'
 wavs_folder = '/resources/wavs/Speaker-Embeddings/data/vox1'
 # wavs_folder = '/resources/wavs/Speaker-Embeddings/data/vox1/test/wav/id10270/5sJomL_D0_g'
 def get_new_path(x):
@@ -171,20 +172,15 @@ def extract_save(x):
 
 
 
-def extract_feature(input_file, feature='world', dim=48, cmvn=False, delta=False, delta_delta=False,
+def extract_feature(input_file, feature='pre_glow', dim=48, cmvn=False, delta=False, delta_delta=False,
                     window_size=25, stride=10, save_feature=None):
-    if feature == 'pre_world':
+    if feature == 'pre_world' or feature == 'pre_glow':
             if input_file.endswith('.wav'):
                 pre_processed_sample_path =get_new_path(input_file)
                 l = np.load(pre_processed_sample_path)
             else:
                 l = np.load(input_file)
             return l
-    if feature == 'glow':
-        y, sr = librosa.load(input_file, sr=22050)
-        y = torch.from_numpy(y).to(device='cuda', dtype=torch.float32)
-        mel = WV.wav2mel(y).cpu().numpy()[0]
-        return mel
         
     y, sr = librosa.load(input_file, sr=sample_rate)
     yt, _ = librosa.effects.trim(y, top_db=20)
@@ -201,6 +197,11 @@ def extract_feature(input_file, feature='world', dim=48, cmvn=False, delta=False
     elif feature == 'world':
         f0, timeaxis, sp, ap = world_decompose(wav=y, fs=sr, frame_period= 5.0)
         feat = world_encode_spectral_envelop(sp = sp, fs = sr, dim = dim).T
+    elif feature == 'raw':
+        return y
+    elif feature == 'glow':
+        y = torch.from_numpy(y).to(device='cuda', dtype=torch.float32)
+        feat = WV.wav2mel(y).cpu().numpy()[0]
 
     else:
         raise ValueError('Unsupported Acoustic Feature: ' + feature)
@@ -250,6 +251,8 @@ def build_LFR_features_numpy(inputs, m, n):
             LFR_inputs.append(frame)
     return np.vstack(LFR_inputs)
 
+dct_mat = F.create_dct(48, 80, 'ortho')
+print ('MFCC 80 -> 48 LFR')
 
 def build_LFR_features(inputs, m, n):
     """
@@ -266,6 +269,7 @@ def build_LFR_features(inputs, m, n):
     # LFR_inputs_batch = []
     # for inputs in inputs_batch:
     inputs = torch.Tensor(inputs)
+    inputs = torch.matmul(inputs, dct_mat)
     LFR_inputs = []
     T = inputs.shape[0]
     T_lfr = int(np.ceil(T / n))
@@ -291,7 +295,7 @@ def theta_dist():
 
 if __name__ == "__main__":
     os.makedirs(save_folder,exist_ok=True)
-    p = multiprocessing.Pool(6)
+    p = multiprocessing.dummy.Pool(40)
 
     wavs = [ str(path) for path in Path(wavs_folder).rglob('*.wav')]
     

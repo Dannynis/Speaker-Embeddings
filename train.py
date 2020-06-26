@@ -70,11 +70,15 @@ def train_net(args):
     # Epochs
     for epoch in range(start_epoch, args.epochs):
         train_dataset = VoxCeleb1Dataset(args, 'train')
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=pad_collate,
-                                                   pin_memory=False, shuffle=True,drop_last=True)
 
+        train_set, val_set = torch.utils.data.random_split(train_dataset, [len(train_dataset)-800, 800])
+
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, collate_fn=pad_collate,
+                                                   pin_memory=False, shuffle=True,drop_last=True, num_workers = 6)
+        test_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, collate_fn=pad_collate,
+                                                   pin_memory=False, shuffle=True,drop_last=True, num_workers = 6)
         # One epoch's training
-        train_loss, train_acc = train(train_loader=train_loader,
+        train_loss, train_acc = train(train_loader=train_loader,test_loader=test_loader,
                                       model=model,
                                       metric_fc=metric_fc,
                                       criterion=criterion,
@@ -114,8 +118,26 @@ def train_net(args):
 
         writer.add_image('model/theta_dist', img, epoch, dataformats='HWC')
 
+def eval(test_loader,model,metric_fc,criterion):
+    losses = []
+    accs = []
+    for i, (data) in tqdm.tqdm(enumerate(test_loader),total=int(len(test_loader.dataset) / test_loader.batch_size)):
+        padded_input, input_lengths, label = data
+        padded_input = padded_input.to(device)
+        # input_lengths = input_lengths.to(device)
+        label = label.to(device)
+        feature = model(padded_input)  # embedding => [N, 512]
+        output = metric_fc(feature, label)  # class_id_out => [N, 1251]
 
-def train(train_loader, model, metric_fc, criterion, optimizer, epoch, logger):
+        # Calculate loss
+        losses.append(criterion(output, label).item())
+        accs.append(accuracy(output, label, 1))
+    print('test loss is {}'.format(torch.mean(torch.Tensor(losses))))
+    print('test acuracy is {}'.format(torch.mean(torch.Tensor(accs))))
+    torch.save(data,'inputs_sample.pkl')
+    print ('test_sample_saved')
+
+def train(train_loader,test_loader, model, metric_fc, criterion, optimizer, epoch, logger):
     model.train()  # train mode (dropout and batchnorm is used)
     metric_fc.train()
 
@@ -159,9 +181,9 @@ def train(train_loader, model, metric_fc, criterion, optimizer, epoch, logger):
                         'Accuracy {accs.val:.3f} ({accs.avg:.3f})'.format(epoch, i, len(train_loader), loss=losses,
                                                                           accs=accs))
             
-        if i % print_freq_test == 0:
-            test_acc, threshold = test(model)
-            print('Test accuracy: ' + str(test_acc))
+        if i % print_freq_test == 0 :
+            model.eval()
+            eval(test_loader,model,metric_fc,criterion)
             model.train()
     return losses.avg, accs.avg
 
